@@ -30,6 +30,17 @@ shared_secret = config['impersonation']['secret']  ## needs to be byte-data
 client = AsyncClient(homeserver, bot_id)
 
 
+async def send_message(msg, roomid):
+    ##Baue Nachricht aus bekommenen Parametern und schicke sie
+    await client.room_send(
+        room_id = roomid,
+        message_type = "m.room.message",
+        content={
+            "msgtype": "m.text",
+            "body": msg
+        }
+    )
+
 def check_functionality():
 
     ## Wir brauchen sophomorix um Gruppen herauszufinden und aufzulösen
@@ -132,19 +143,12 @@ async def call_on_invites(room, event):
         return
 
     # join the room the bot is invited to
-    roomid=room.room_id
+    roomid = room.room_id
     await client.join(roomid)
     print("Raum '" + room.display_name + "' beigetreten")
 
     # send a message about having joined
-    await client.room_send(
-        room_id=roomid,
-        message_type="m.room.message",
-        content={
-            "msgtype": "m.text",
-            "body": "Bot sagt: zu Diensten!"
-        }
-    )
+    await send_message("Bot sagt : zu Diensten!", roomid)
 
     ## Versuche, alle Mitglieder herauszubekommen
     try:
@@ -158,7 +162,6 @@ async def call_on_invites(room, event):
         name=str(member.user_id).split("@")[1].split(":")[0]
         print(name)
         (error, newmembers) = await get_groupmembers(name)
-        
         
     #await client.room_invite(roomid, "@username:url")                      #Add 'musterfrau' and leave the room
     #await client.room_leave(roomid)
@@ -187,5 +190,4 @@ while True:
     loop.run_until_complete(main())
     
 client.close()
-
 
