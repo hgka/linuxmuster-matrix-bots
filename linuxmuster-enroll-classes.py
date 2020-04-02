@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 
-#import sys
-import json
-import hmac
-import hashlib
+
+# Verschlüsselungsalgorithmen für Nachahmung
+import hashlib, hmac
+# Netzwerkanfrage bei Matrix für Nachahmung
 import requests
+
+# Datenaustausch über json und subprocess
+import json
+import subprocess  # see https://docs.python.org/3.6/library/subprocess.html#module-subprocess
+
+# Konfigurationsdatei lesen
+import configparser # see https://docs.python.org/3.6/library/configparser.html
+
+# Asyncrone Bibliothek für Matrix-API
 import asyncio
-from nio import * 
-import configparser
-import subprocess
+# Matrix-API Bibliothek
+from nio import * # see https://matrix-nio.readthedocs.io/en/latest/index.html
+
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -25,7 +34,7 @@ def check_functionality():
 
     ## Wir brauchen sophomorix um Gruppen herauszufinden und aufzulösen
     try:
-        completedprocess = subprocess.run(["sophomorix-class", "-h"])
+        completedprocess = subprocess.run(["sophomorix-class", "-h"], stdout=subprocess.PIPE)
     except OSError as e:
         print("Execution failed:", e, file=sys.stderr)
         logout_response = loop.run_until_complete(logout())
@@ -61,6 +70,55 @@ def get_impersonation_token(user_id, homeserver, shared_secret):
 #access_token = get_impersonation_token(user_id, homeserver, shared_secret)
 #print("Access token for %s: %s" % (user_id,access_token)
 
+async def get_groupmembers(possibleclass):
+    try:
+        completedprocess = subprocess.run(["sophomorix-class", "-i", "-c", possibleclass, "-j"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError as e:
+        print("Execution failed:", e, file=sys.stderr)
+        return(False, None)
+
+    ## need to remove starting and ending of JSON
+    try:
+        data_in_str = ' '.join(completedprocess.stderr.decode('utf-8').split('\n')[1:-2])
+        jsonstream = data_in_str.encode()
+        jsondata = json.loads(jsonstream)
+    except ValueError as e:
+        print(e)
+        print(data_in_str)
+        return(False, None)
+    
+    ## check if the jsondata contains a total
+    try:
+        if 'COUNTER' not in jsondata:
+            raise ValueError("No counter in JSON")
+        if 'TOTAL' not in jsondata['COUNTER']:
+            raise ValueError("No TOTAL in JSON-counter")
+        if jsondata["COUNTER"]["TOTAL"] == 0:
+            #raise ValueError("Total 0 in JSON - that is no group")
+            return(True, None)
+    except ValueError as e:
+        print(e)
+        return(False, None)
+
+    ## get the groups
+    members=[]
+    try:
+        if 'GROUPS' not in jsondata:
+            raise ValueError("No group found in JSON")
+
+        nomembersfound=True
+        for group in jsondata['GROUPS']:
+            if 'member' in jsondata['GROUPS'][group]:
+                nomembersfound=False
+                for cn in jsondata['GROUPS'][group]['member']:
+                    members.append(cn[3:cn[0:].find(",OU")])
+    except ValueError as e:
+        print(e)
+        return(False, None)
+
+    return(True, members)
+    
+        
 async def call_on_invites(room, event):
 
     # also possible InviteAliasEvent
@@ -94,10 +152,13 @@ async def call_on_invites(room, event):
     except:
         print(response)
         ## return
-
+        
+    ## Jedes Mitglied, dass eine Gruppe ist, wird aufgelöst
     for member in response.members:
-        username=str(member.user_id).split("@")[1].split(":")[0]
-        print(username)
+        name=str(member.user_id).split("@")[1].split(":")[0]
+        print(name)
+        (error, newmembers) = await get_groupmembers(name)
+        
         
     #await client.room_invite(roomid, "@username:url")                      #Add 'musterfrau' and leave the room
     #await client.room_leave(roomid)
@@ -116,11 +177,9 @@ async def logout():
     await client.close()
 
 
+check_functionality()
+
 loop = asyncio.get_event_loop()
-
-    
-
-
 login_response = loop.run_until_complete(login())
 
 while True:
