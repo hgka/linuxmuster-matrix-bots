@@ -217,15 +217,25 @@ async def logout():
 
 loop = asyncio.get_event_loop()
 check_response = loop.run_until_complete(check_functionality())
-login_response = loop.run_until_complete(login())
 
 while True:
     print("Starte neue Schleife...")
+
     try:
-        loop.run_until_complete(main())
+        login_response = loop.run_until_complete(login())
     except KeyboardInterrupt:
         logout_response = loop.run_until_complete(logout())
         raise SystemExit
-    
+
+    try:
+        main_response = loop.run_until_complete(main())
+    except KeyboardInterrupt:
+        logout_response = loop.run_until_complete(logout())
+        raise SystemExit
+
+    logout_response = loop.run_until_complete(logout())
+
+
+
 logout_response = loop.run_until_complete(logout())
 
