@@ -3,7 +3,7 @@ Description=linuxmuster-matrix-bots.service
 
 [Service]
 Type=simple
-User=nobody
+User=root
 WorkingDirectory=/opt/linuxmuster-matrix-bots/
 ExecStart=/opt/linuxmuster-matrix-bots/matrix-nio-env/bin/python3 /opt/linuxmuster-matrix-bots/linuxmuster-enrol-classes-bot.py
 Restart=on-abort
