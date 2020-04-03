@@ -36,8 +36,10 @@ passwd = geheim
 
 ```
 cd /opt/linuxmuster-matrix-bots
-source matrix-nio-env
+source matrix-nio-env/bin/activate
 ./linuxmuster-enrol-classes-bot.py
+...
+deactivate
 ```
 
 You can stop using CTRL-C.
