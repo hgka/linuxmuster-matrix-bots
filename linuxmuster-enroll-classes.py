@@ -67,7 +67,6 @@ def check_functionality():
 async def get_impersonation_token(user_id, homeserver, shared_secret):
     login_api_url = homeserver + '/_matrix/client/r0/login'
 
-    print(type(shared_secret), type(user_id), type(user_id.encode('utf-8')))
     password = hmac.new(shared_secret, user_id.encode('utf-8'), hashlib.sha512)
     password = password.hexdigest()
 
@@ -133,19 +132,17 @@ async def get_lmn_classmembers(possibleclass):
     if not nomembersfound:
         return(True, members)
 
-invitee = ""
 
 async def call_on_invites(room, event):
 
     # also possible InviteAliasEvent
     if (not isinstance(event, InviteMemberEvent)):
-        print("This is not an InviteMemberEvent!", event)
+        print(f"This is not an InviteMemberEvent! {event}")
         return
 
     # see: python3 >>> help(InviteMemberEvent)
     if ( event.membership != "invite" ):
-        print("This is not an invitation! (", event.membership, ")")
-        print(event.sender)
+        print(f"This is not an invitation! From {event.sender}: {event.membership}")
         return
 
     invitee = event.sender
@@ -153,7 +150,7 @@ async def call_on_invites(room, event):
     # join the room the bot is invited to
     roomid = room.room_id
     await client.join(roomid)
-    print("Raum '" + room.display_name + "' beigetreten")
+    #print("Raum '" + room.display_name + "' beigetreten")
 
     # send a message about having joined
     await send_message("Enrol-Bot sagt: zu Diensten!", roomid)
@@ -176,8 +173,6 @@ async def call_on_invites(room, event):
                             if 'state_key' in event:
                                 invited.append(event['state_key'])
                 
-
-
     # syntax:
     # { 'type': 'm.room.member',
     #   'room_id': '!AQTHnwKnOTLIgVTZlb:example.com',
@@ -193,14 +188,16 @@ async def call_on_invites(room, event):
     
     ## Jedes Mitglied, dass eine Gruppe ist, wird aufgelöst
     for invitee in invited:
-        await send_message(f"Enrol-Bot sagt: alle Mitglieder der Klasse/der Projekts {invitee} werden eingeladen!", roomid)
         name=str(invitee).split("@")[1].split(":")[0]
         (happy, newmembers) = await get_lmn_classmembers(name)
         if happy:
             if newmembers:
+                await send_message(f"Enrol-Bot sagt: alle Mitglieder der Klasse/der Projekts {invitee} werden eingeladen!", roomid)
                 for newmember in newmembers:
                     await client.room_invite(roomid, "@"+newmember+":"+id_domain)     
 
+    await send_message(f"Enrol-Bot sagt: Ich hoffe, ich habe gut gedient! Ich verlasse den Raum. Tschüss.", roomid)
+    await client.room_leave(roomid)
 
     # mache dich zum Einladenden (der ist vermutlich Administrator im Raum)
     #accesstoken = await get_impersonation_token('@kuechel:example.com', homeserver, shared_secret)
@@ -212,7 +209,6 @@ async def call_on_invites(room, event):
     #print(json.dumps(response,sort_keys=True, indent=2))
     
     #await client.room_invite(roomid, "@username:url")                      #Add 'musterfrau' and leave the room
-    #await client.room_leave(roomid)
     #await client.close()
 
 async def login():
@@ -223,6 +219,7 @@ async def main():
     #auf das Event "Invite" warten
     client.add_event_callback(call_on_invites, InviteEvent)
     await client.sync_forever(30000)
+    #await client.sync(15000)
 
 async def logout():
     await client.close()
@@ -233,9 +230,13 @@ check_functionality()
 loop = asyncio.get_event_loop()
 login_response = loop.run_until_complete(login())
 
+
 while True:
     print("Loop new")
-    loop.run_until_complete(main())
+    try:
+        loop.run_until_complete(main())
+    except KeyboardInterrupt:
+        raise SystemExit
     
 client.close()
 
