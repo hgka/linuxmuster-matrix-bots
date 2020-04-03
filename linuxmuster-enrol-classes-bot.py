@@ -179,16 +179,21 @@ async def call_on_invites(room, event):
     #   'age': 6264213
     # }
     
+    ## Bot ändert seinen Displayname auf den, von der Person er eingeladen wurde
+    ## nach der Einladung setzt er ihn wieder auf "enrol-bot" zurück
+    await client.set_displayname(str(await client.get_displayname(invitee)).split(": ")[1])
+
     ## Jedes Mitglied, dass eine Gruppe ist, wird aufgelöst
     for invitee in invited:
         name=str(invitee).split("@")[1].split(":")[0]
         (happy, newmembers) = await get_lmn_classmembers(name)
         if happy:
             if newmembers:
-                await send_message(f"Enrol-Bot sagt: alle Mitglieder der Klasse/der Projekts {invitee} werden eingeladen!", roomid)
+                await send_message(f"Enrol-Bot sagt: alle Mitglieder der Klasse/des Projekts {invitee} werden eingeladen!", roomid)
                 for newmember in newmembers:
-                    await client.room_invite(roomid, "@"+newmember+":"+id_domain)     
+                    await client.room_invite(roomid, "@"+newmember+":"+id_domain)
 
+    await client.set_displayname("enrol-bot")
     await send_message(f"Enrol-Bot sagt: Ich hoffe, ich habe gut gedient! Ich verlasse den Raum. Tschüss.", roomid)
     await client.room_leave(roomid)
 
