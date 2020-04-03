@@ -26,7 +26,7 @@ bot_id = config['bot']['id']
 bot_passwd = config['bot']['passwd']
 homeserver = config['homeserver']['url']
 id_domain = bot_id.split(":")[1]
-shared_secret = config['impersonation']['secret']  ## needs to be byte-data
+shared_secret = str.encode(config['impersonation']['secret'])  ## needs to be byte-data
 client = AsyncClient(homeserver, bot_id)
 
 
@@ -64,9 +64,10 @@ def check_functionality():
 
 
 
-def get_impersonation_token(user_id, homeserver, shared_secret):
+async def get_impersonation_token(user_id, homeserver, shared_secret):
     login_api_url = homeserver + '/_matrix/client/r0/login'
 
+    print(type(shared_secret), type(user_id), type(user_id.encode('utf-8')))
     password = hmac.new(shared_secret, user_id.encode('utf-8'), hashlib.sha512)
     password = password.hexdigest()
 
@@ -81,7 +82,7 @@ def get_impersonation_token(user_id, homeserver, shared_secret):
 #access_token = get_impersonation_token(user_id, homeserver, shared_secret)
 #print("Access token for %s: %s" % (user_id,access_token)
 
-async def get_groupmembers(possibleclass):
+async def get_lmn_classmembers(possibleclass):
     try:
         completedprocess = subprocess.run(["sophomorix-class", "-i", "-c", possibleclass, "-j"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as e:
@@ -105,17 +106,19 @@ async def get_groupmembers(possibleclass):
         if 'TOTAL' not in jsondata['COUNTER']:
             raise ValueError("No TOTAL in JSON-counter")
         if jsondata["COUNTER"]["TOTAL"] == 0:
-            #raise ValueError("Total 0 in JSON - that is no group")
+            #raise ValueError("Total 0 in JSON - that is no class")
             return(True, None)
     except ValueError as e:
         print(e)
         return(False, None)
 
-    ## get the groups
+    ## get the classes
     members=[]
     try:
         if 'GROUPS' not in jsondata:
             raise ValueError("No group found in JSON")
+
+        ## get all members in all classes found
 
         nomembersfound=True
         for group in jsondata['GROUPS']:
@@ -127,20 +130,25 @@ async def get_groupmembers(possibleclass):
         print(e)
         return(False, None)
 
-    return(True, members)
-    
-        
+    if not nomembersfound:
+        return(True, members)
+
+invitee = ""
+
 async def call_on_invites(room, event):
 
     # also possible InviteAliasEvent
     if (not isinstance(event, InviteMemberEvent)):
         print("This is not an InviteMemberEvent!", event)
         return
-    
+
     # see: python3 >>> help(InviteMemberEvent)
     if ( event.membership != "invite" ):
         print("This is not an invitation! (", event.membership, ")")
+        print(event.sender)
         return
+
+    invitee = event.sender
 
     # join the room the bot is invited to
     roomid = room.room_id
@@ -148,21 +156,61 @@ async def call_on_invites(room, event):
     print("Raum '" + room.display_name + "' beigetreten")
 
     # send a message about having joined
-    await send_message("Bot sagt : zu Diensten!", roomid)
+    await send_message("Enrol-Bot sagt: zu Diensten!", roomid)
 
-    ## Versuche, alle Mitglieder herauszubekommen
+    # examine the room
     try:
-        response = (await client.joined_members(roomid))
-    except:
-        print(response)
-        ## return
-        
+        response = (await client.room_get_state(roomid)).events
+    except RoomGetStateError as e:
+        print(response, e)
+        ## return        
+
+    # get all invited people (some may be users, some may be groups)
+    invited = []
+    for event in response:
+        if 'type' in event:
+            if (event['type'] == 'm.room.member'):
+                if 'content' in event:
+                    if 'membership' in event['content']:
+                        if (event['content']['membership'] == 'invite'):
+                            if 'state_key' in event:
+                                invited.append(event['state_key'])
+                
+
+
+    # syntax:
+    # { 'type': 'm.room.member',
+    #   'room_id': '!AQTHnwKnOTLIgVTZlb:example.com',
+    #   'sender': '@kuechel:example.com',
+    #   'content': {'membership': 'invite'},
+    #   'state_key': '@10a:example.com',
+    #   'origin_server_ts': 1585860032214,
+    #   'unsigned': {'age': 6264213},
+    #   'event_id': '$HtYxWl4cRDsIjplcYCkckzCQdQ-ohQPGCX42eSjTjro',
+    #   'user_id': '@kuechel:example.com',
+    #   'age': 6264213
+    # }
+    
     ## Jedes Mitglied, dass eine Gruppe ist, wird aufgelöst
-    for member in response.members:
-        name=str(member.user_id).split("@")[1].split(":")[0]
-        print(name)
-        (error, newmembers) = await get_groupmembers(name)
-        
+    for invitee in invited:
+        await send_message(f"Enrol-Bot sagt: alle Mitglieder der Klasse/der Projekts {invitee} werden eingeladen!", roomid)
+        name=str(invitee).split("@")[1].split(":")[0]
+        (happy, newmembers) = await get_lmn_classmembers(name)
+        if happy:
+            if newmembers:
+                for newmember in newmembers:
+                    await client.room_invite(roomid, "@"+newmember+":"+id_domain)     
+
+
+    # mache dich zum Einladenden (der ist vermutlich Administrator im Raum)
+    #accesstoken = await get_impersonation_token('@kuechel:example.com', homeserver, shared_secret)
+    #thisapi = api.Api()
+    #response = requests.get(homeserver + thisapi.joined_members(accesstoken, roomid)[1])
+    #print(response.json())
+    #print(requests.get(homeserver + thisapi.whoami(accesstoken)[1]).json())
+    #response = requests.get(homeserver+ thisapi.room_get_state(accesstoken,roomid)[1]).json()
+    #print(json.dumps(response,sort_keys=True, indent=2))
+    
     #await client.room_invite(roomid, "@username:url")                      #Add 'musterfrau' and leave the room
     #await client.room_leave(roomid)
     #await client.close()
