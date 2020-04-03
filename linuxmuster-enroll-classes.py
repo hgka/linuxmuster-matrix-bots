@@ -41,7 +41,7 @@ async def send_message(msg, roomid):
         }
     )
 
-def check_functionality():
+async def check_functionality():
 
     ## Wir brauchen sophomorix um Gruppen herauszufinden und aufzulösen
     try:
@@ -61,9 +61,6 @@ def check_functionality():
 #        raise SystemExit
 
 
-
-
-
 async def get_impersonation_token(user_id, homeserver, shared_secret):
     login_api_url = homeserver + '/_matrix/client/r0/login'
 
@@ -77,9 +74,6 @@ async def get_impersonation_token(user_id, homeserver, shared_secret):
     }
     response = requests.post(login_api_url, data=json.dumps(payload))
     return response.json()['access_token']
-
-#access_token = get_impersonation_token(user_id, homeserver, shared_secret)
-#print("Access token for %s: %s" % (user_id,access_token)
 
 async def get_lmn_classmembers(possibleclass):
     try:
@@ -150,7 +144,6 @@ async def call_on_invites(room, event):
     # join the room the bot is invited to
     roomid = room.room_id
     await client.join(roomid)
-    #print("Raum '" + room.display_name + "' beigetreten")
 
     # send a message about having joined
     await send_message("Enrol-Bot sagt: zu Diensten!", roomid)
@@ -208,9 +201,6 @@ async def call_on_invites(room, event):
     #response = requests.get(homeserver+ thisapi.room_get_state(accesstoken,roomid)[1]).json()
     #print(json.dumps(response,sort_keys=True, indent=2))
     
-    #await client.room_invite(roomid, "@username:url")                      #Add 'musterfrau' and leave the room
-    #await client.close()
-
 async def login():
     #einloggen
     await client.login(bot_passwd)
@@ -225,18 +215,17 @@ async def logout():
     await client.close()
 
 
-check_functionality()
-
 loop = asyncio.get_event_loop()
+check_response = loop.run_until_complete(check_functionality())
 login_response = loop.run_until_complete(login())
 
-
 while True:
-    print("Loop new")
+    print("Starte neue Schleife...")
     try:
         loop.run_until_complete(main())
     except KeyboardInterrupt:
+        logout_response = loop.run_until_complete(logout())
         raise SystemExit
     
-client.close()
+logout_response = loop.run_until_complete(logout())
 
