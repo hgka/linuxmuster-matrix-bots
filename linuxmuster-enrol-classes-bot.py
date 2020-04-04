@@ -24,6 +24,7 @@ config.read('config.ini')
 
 bot_id = config['bot']['id']
 bot_passwd = config['bot']['passwd']
+bot_displayname = config['bot']['displayname']
 homeserver = config['homeserver']['url']
 id_domain = bot_id.split(":")[1]
 shared_secret = str.encode(config['impersonation']['secret'])  ## needs to be byte-data
@@ -146,7 +147,7 @@ async def call_on_invites(room, event):
     await client.join(roomid)
 
     # send a message about having joined
-    await send_message("Enrol-Bot sagt: zu Diensten!", roomid)
+    await send_message(f"{bot_displayname} sagt: zu Diensten!", roomid)
 
     # examine the room
     try:
@@ -189,12 +190,12 @@ async def call_on_invites(room, event):
         (happy, newmembers) = await get_lmn_classmembers(name)
         if happy:
             if newmembers:
-                await send_message(f"Enrol-Bot sagt: alle Mitglieder der Klasse/des Projekts {invitee} werden eingeladen!", roomid)
+                await send_message(f"{bot_displayname} sagt: alle Mitglieder der Klasse/des Projekts {invitee} werden eingeladen!", roomid)
                 for newmember in newmembers:
                     await client.room_invite(roomid, "@"+newmember+":"+id_domain)
 
-    await client.set_displayname("enrol-bot")
-    await send_message(f"Enrol-Bot sagt: Ich hoffe, ich habe gut gedient! Ich verlasse den Raum. Tschüss.", roomid)
+    await client.set_displayname(bot_displayname)
+    await send_message(f"{bot_displayname} sagt: Ich hoffe, ich habe gut gedient! Ich verlasse den Raum. Tschüss.", roomid)
     await client.room_leave(roomid)
 
     # mache dich zum Einladenden (der ist vermutlich Administrator im Raum)
