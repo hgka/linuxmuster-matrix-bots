@@ -76,7 +76,7 @@ async def get_impersonation_token(user_id, homeserver, shared_secret):
     response = requests.post(login_api_url, data=json.dumps(payload))
     return response.json()['access_token']
 
-async def get_lmn_classmembers(possibleclass):
+async def get_lmn_classmembers(possibleclass,roomid):
     try:
         completedprocess = subprocess.run(["sophomorix-class", "-i", "-c", possibleclass, "-j"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as e:
@@ -100,6 +100,7 @@ async def get_lmn_classmembers(possibleclass):
         if 'TOTAL' not in jsondata['COUNTER']:
             raise ValueError("No TOTAL in JSON-counter")
         if jsondata["COUNTER"]["TOTAL"] == 0:
+            print("Total 0 in JSON: {possibleclass} - that is no class")
             #raise ValueError("Total 0 in JSON - that is no class")
             return(True, None)
     except ValueError as e:
@@ -113,12 +114,15 @@ async def get_lmn_classmembers(possibleclass):
             raise ValueError("No group found in JSON")
 
         ## get all members in all classes found
-
         nomembersfound=True
         for group in jsondata['GROUPS']:
+            print(jsondata['GROUPS'][group])
             if 'member' in jsondata['GROUPS'][group]:
                 nomembersfound=False
+                print(f"Anzahl der Mitglieder der Gruppe {possibleclass}: {len(jsondata['GROUPS'][group]['member'])}")
+                await send_message(f"{bot_displayname} sagt: Habe {len(jsondata['GROUPS'][group]['member'])} Mitglieder in Gruppe {possibleclass} gefunden.", roomid)
                 for cn in jsondata['GROUPS'][group]['member']:
+                    print(cn[3:cn[0:].find(",OU")])
                     members.append(cn[3:cn[0:].find(",OU")])
     except ValueError as e:
         print(e)
@@ -127,6 +131,8 @@ async def get_lmn_classmembers(possibleclass):
     if not nomembersfound:
         return(True, members)
 
+    await send_message(f"{bot_displayname} sagt: Hm, habe keine Mitglieder in Gruppe {possibleclass} gefunden.", roomid)
+    return(False,None)
 
 async def call_on_invites(room, event):
 
@@ -141,7 +147,7 @@ async def call_on_invites(room, event):
         return
 
     invitee = event.sender
-
+    
     # join the room the bot is invited to
     roomid = room.room_id
     await client.join(roomid)
@@ -160,13 +166,16 @@ async def call_on_invites(room, event):
     invited = []
     for event in response:
         if 'type' in event:
+            #await send_message(f"{bot_displayname} sagt: {event['type']}", roomid)
             if (event['type'] == 'm.room.member'):
                 if 'content' in event:
+                    #await send_message(f"{bot_displayname} sagt: {event['content']}", roomid)
                     if 'membership' in event['content']:
+                        #await send_message(f"{bot_displayname} sagt: {event['content']['membership']}", roomid)
                         if (event['content']['membership'] == 'invite'):
                             if 'state_key' in event:
                                 invited.append(event['state_key'])
-                
+
     # syntax:
     # { 'type': 'm.room.member',
     #   'room_id': '!AQTHnwKnOTLIgVTZlb:example.com',
@@ -184,15 +193,18 @@ async def call_on_invites(room, event):
     ## nach der Einladung setzt er ihn wieder auf "enrol-bot" zurück
     await client.set_displayname(str(await client.get_displayname(invitee)).split(": ")[1])
 
+    await send_message(f"{bot_displayname} sagt: Habe folgendes gefunden: {invited}", roomid)                                
+
     ## Jedes Mitglied, dass eine Gruppe ist, wird aufgelöst
     for invitee in invited:
         name=str(invitee).split("@")[1].split(":")[0]
-        (happy, newmembers) = await get_lmn_classmembers(name)
+        (happy, newmembers) = await get_lmn_classmembers(name,roomid)
         if happy:
             if newmembers:
                 await send_message(f"{bot_displayname} sagt: alle Mitglieder der Klasse/des Projekts {invitee} werden eingeladen!", roomid)
                 for newmember in newmembers:
-                    await client.room_invite(roomid, "@"+newmember+":"+id_domain)
+                    returnvalue = (await client.room_invite(roomid, "@"+newmember+":"+id_domain))
+                    print(returnvalue)
 
     await client.set_displayname(bot_displayname)
     await send_message(f"{bot_displayname} sagt: Ich hoffe, ich habe gut gedient! Ich verlasse den Raum. Tschüss.", roomid)
