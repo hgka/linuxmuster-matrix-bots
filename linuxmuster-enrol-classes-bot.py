@@ -157,14 +157,47 @@ async def call_on_invites(room, event):
 
     # examine the room
     try:
-        response = (await client.room_get_state(roomid)).events
+        response = (await client.room_get_state(roomid))
     except RoomGetStateError as e:
-        print(response, e)
-        ## return        
+        print("Hab ein Problem: ", response, e)
+        return
 
+    
+    try:
+        print(response.transport_response)
+        print(response.transport_response.status)
+    except AttributeError:
+        print("Problem: Es gibt keinen Status für diese Antwort")
+        return
+
+    if response.transport_response.status != 200:
+        try:
+            print(response.status_code)
+        except AttributeError:
+            print("Problem: Es gibt keinen status_code in der Antwort")
+            return
+
+        if response.status_code == "M_FORBIDDEN":
+            await send_message(f"{bot_displayname} sagt: Ich darf in dem Raum gar nichts tun, tut mir leid! Erlaube mir, den Raum anzuschauen und lade mich erneut ein. Ich ziehe meine Einladung zurück.", roomid)
+            await client.room_leave(roomid)
+            return
+
+    current_room = response
+
+    #print(response.__dict__)
+    #print(response.__attrs_attrs__)
+    #print(response.transport_response)
+    #print(response.message)
+    
+    try:
+        events = current_room.events
+    except AttributeError:
+        await send_message(f"{bot_displayname} sagt: In diesem Raum finde ich gar keine Events!", roomid)
+        
     # get all invited people (some may be users, some may be groups)
-    invited = []
-    for event in response:
+    to_be_invited = []
+    already_in_room = []
+    for event in events:
         if 'type' in event:
             #await send_message(f"{bot_displayname} sagt: {event['type']}", roomid)
             if (event['type'] == 'm.room.member'):
@@ -174,7 +207,10 @@ async def call_on_invites(room, event):
                         #await send_message(f"{bot_displayname} sagt: {event['content']['membership']}", roomid)
                         if (event['content']['membership'] == 'invite'):
                             if 'state_key' in event:
-                                invited.append(event['state_key'])
+                                to_be_invited.append(event['state_key'])
+                        if (event['content']['membership'] == 'join'):
+                            if 'state_key' in event:
+                                already_in_room.append(event['state_key'])
 
     # syntax:
     # { 'type': 'm.room.member',
@@ -193,18 +229,46 @@ async def call_on_invites(room, event):
     ## nach der Einladung setzt er ihn wieder auf "enrol-bot" zurück
     await client.set_displayname(str(await client.get_displayname(invitee)).split(": ")[1])
 
-    await send_message(f"{bot_displayname} sagt: Habe folgendes gefunden: {invited}", roomid)                                
+    #await send_message(f"{bot_displayname} sagt: Habe folgendes gefunden: {invited}", roomid)                                
 
     ## Jedes Mitglied, dass eine Gruppe ist, wird aufgelöst
-    for invitee in invited:
+    found_somebody_to_love=False
+    for invitee in to_be_invited:
         name=str(invitee).split("@")[1].split(":")[0]
         (happy, newmembers) = await get_lmn_classmembers(name,roomid)
         if happy:
             if newmembers:
+                found_somebody_to_love=True
                 await send_message(f"{bot_displayname} sagt: alle Mitglieder der Klasse/des Projekts {invitee} werden eingeladen!", roomid)
                 for newmember in newmembers:
-                    returnvalue = (await client.room_invite(roomid, "@"+newmember+":"+id_domain))
-                    print(returnvalue)
+                    ## alle User, die schon im Raum sind, werden gar nicht erst eingeladen
+                    if "@"+newmember+":"+id_domain in already_in_room:
+                        print(f"{newmember} ist schon drin")
+                        continue
+                        
+                    response = (await client.room_invite(roomid, "@"+newmember+":"+id_domain))
+                    try:
+                        asdf = response.transport_response
+                        adsf = response.transport_response.status
+                    except AttributeError:
+                        print("Problem: Es gibt keinen Status für diese Antwort")
+                        print(response)
+                        return
+
+                    if response.transport_response.status != 200:
+                        try:
+                            asdf = response.status_code
+                        except AttributeError:
+                            print("Problem: Es gibt keinen status_code in der Antwort")
+                            print(response)
+                            return
+                        
+                        ## M_FORBIDDEN gibt es auch, wenn der User schon im Raum ist, aber das wird oben abgefangen
+                        if response.status_code == "M_FORBIDDEN":
+                            await send_message(f"{bot_displayname} sagt: Ich darf {newmember} nicht in diesen Raum einladen. Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen. Der Server sagte außerdem: {response.message}", roomid)
+
+    if not found_somebody_to_love:
+        await send_message(f"{bot_displayname} sagt: Ich habe keine Gruppe gefunden, deren Mitglieder ich einladen könnte. Lade zuerst eine Gruppe ein!", roomid)
 
     await client.set_displayname(bot_displayname)
     await send_message(f"{bot_displayname} sagt: Ich hoffe, ich habe gut gedient! Ich verlasse den Raum. Tschüss.", roomid)
