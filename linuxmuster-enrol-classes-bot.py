@@ -20,20 +20,45 @@ from nio import * # see https://matrix-nio.readthedocs.io/en/latest/index.html
 
 
 config = configparser.ConfigParser()
-config.read('config.ini')
+config.read('config.example.ini')
 
+##Enrol-Bot
 bot_id = config['bot']['id']
 bot_passwd = config['bot']['passwd']
 bot_displayname = config['bot']['displayname']
+##Work-Bot
+work_id = config['workbot']['id']
+work_passwd = config['workbot']['passwd']
+work_displayname = config['workbot']['displayname']
 homeserver = config['homeserver']['url']
 id_domain = bot_id.split(":")[1]
 shared_secret = str.encode(config['impersonation']['secret'])  ## needs to be byte-data
 client = AsyncClient(homeserver, bot_id)
+workclient = AsyncClient(homeserver, work_id)
 
+##Für Datenweitergabe an Workbot
+class object:
+    def __init__(self, invitee, roomid, event, events):
+        self.invitee = invitee
+        self.roomid = roomid
+        self.event = event
+        self.events = events
+
+list = []
 
 async def send_message(msg, roomid):
     ##Baue Nachricht aus bekommenen Parametern und schicke sie
     await client.room_send(
+        room_id = roomid,
+        message_type = "m.room.message",
+        content={
+            "msgtype": "m.text",
+            "body": msg
+        }
+    )
+async def send_work_message(msg, roomid):
+    ##Baue Nachricht aus bekommenen Parametern und schicke sie
+    await workclient.room_send(
         room_id = roomid,
         message_type = "m.room.message",
         content={
@@ -184,95 +209,120 @@ async def call_on_invites(room, event):
 
     current_room = response
 
-    #print(response.__dict__)
-    #print(response.__attrs_attrs__)
-    #print(response.transport_response)
-    #print(response.message)
-    
     try:
         events = current_room.events
     except AttributeError:
         await send_message(f"{bot_displayname} sagt: In diesem Raum finde ich gar keine Events!", roomid)
-        
-    # get all invited people (some may be users, some may be groups)
-    to_be_invited = []
-    already_in_room = []
-    for event in events:
-        if 'type' in event:
-            #await send_message(f"{bot_displayname} sagt: {event['type']}", roomid)
-            if (event['type'] == 'm.room.member'):
-                if 'content' in event:
-                    #await send_message(f"{bot_displayname} sagt: {event['content']}", roomid)
-                    if 'membership' in event['content']:
-                        #await send_message(f"{bot_displayname} sagt: {event['content']['membership']}", roomid)
-                        if (event['content']['membership'] == 'invite'):
-                            if 'state_key' in event:
-                                to_be_invited.append(event['state_key'])
-                        if (event['content']['membership'] == 'join'):
-                            if 'state_key' in event:
-                                already_in_room.append(event['state_key'])
 
-    # syntax:
-    # { 'type': 'm.room.member',
-    #   'room_id': '!AQTHnwKnOTLIgVTZlb:example.com',
-    #   'sender': '@kuechel:example.com',
-    #   'content': {'membership': 'invite'},
-    #   'state_key': '@10a:example.com',
-    #   'origin_server_ts': 1585860032214,
-    #   'unsigned': {'age': 6264213},
-    #   'event_id': '$HtYxWl4cRDsIjplcYCkckzCQdQ-ohQPGCX42eSjTjro',
-    #   'user_id': '@kuechel:example.com',
-    #   'age': 6264213
-    # }
+    obj = object(invitee, roomid, event, events)
+    list.append(obj)
+    await client.room_invite(roomid, work_id)
+    if(len(list) == 1):
+        await send_message(f"{bot_displayname} sagt: Ich verabschiede mich und schicke einen Arbeiter zum Einladen", roomid)
+        await client.room_leave(roomid)
+        await start_worker()
+    await send_message(f"{bot_displayname} sagt: Ich habe meinem Arbeiter Bescheid gegeben, er kommt bald vorbei. Position in der Warteschlange: {len(list)-1}", roomid)
+    await client.room_leave(roomid)
+    await start_worker()
+
+    #print(response.__dict__)
+    #print(response.__attrs_attrs__)
+    #print(response.transport_response)
+    #print(response.message)
+
     
-    ## Bot ändert seinen Displayname auf den, von der Person er eingeladen wurde
-    ## nach der Einladung setzt er ihn wieder auf "enrol-bot" zurück
-    await client.set_displayname(str(await client.get_displayname(invitee)).split(": ")[1])
 
-    #await send_message(f"{bot_displayname} sagt: Habe folgendes gefunden: {invited}", roomid)                                
+async def start_worker():
+    while(not len(list) == 0):
+        print("Starte Workbot...")
+        invitee = list[0].invitee
+        roomid = list[0].roomid
+        event = list[0].event
+        events = list[0].events
 
-    ## Jedes Mitglied, dass eine Gruppe ist, wird aufgelöst
-    found_somebody_to_love=False
-    for invitee in to_be_invited:
-        name=str(invitee).split("@")[1].split(":")[0]
-        (happy, newmembers) = await get_lmn_classmembers(name,roomid)
-        if happy:
-            if newmembers:
-                found_somebody_to_love=True
-                await send_message(f"{bot_displayname} sagt: alle Mitglieder der Klasse/des Projekts {invitee} werden eingeladen!", roomid)
-                for newmember in newmembers:
-                    ## alle User, die schon im Raum sind, werden gar nicht erst eingeladen
-                    if "@"+newmember+":"+id_domain in already_in_room:
-                        print(f"{newmember} ist schon drin")
-                        continue
-                        
-                    response = (await client.room_invite(roomid, "@"+newmember+":"+id_domain))
-                    try:
-                        asdf = response.transport_response
-                        adsf = response.transport_response.status
-                    except AttributeError:
-                        print("Problem: Es gibt keinen Status für diese Antwort")
-                        print(response)
-                        return
+        await workclient.join(roomid)
 
-                    if response.transport_response.status != 200:
+
+        # get all invited people (some may be users, some may be groups)
+        to_be_invited = []
+        already_in_room = []
+        for event in events:
+            if 'type' in event:
+                #await send_message(f"{bot_displayname} sagt: {event['type']}", roomid)
+                if (event['type'] == 'm.room.member'):
+                    if 'content' in event:
+                        #await send_message(f"{bot_displayname} sagt: {event['content']}", roomid)
+                        if 'membership' in event['content']:
+                            #await send_message(f"{bot_displayname} sagt: {event['content']['membership']}", roomid)
+                            if (event['content']['membership'] == 'invite'):
+                                if 'state_key' in event:
+                                    to_be_invited.append(event['state_key'])
+                            if (event['content']['membership'] == 'join'):
+                                if 'state_key' in event:
+                                    already_in_room.append(event['state_key'])
+
+        # syntax:
+        # { 'type': 'm.room.member',
+        #   'room_id': '!AQTHnwKnOTLIgVTZlb:example.com',
+        #   'sender': '@kuechel:example.com',
+        #   'content': {'membership': 'invite'},
+        #   'state_key': '@10a:example.com',
+        #   'origin_server_ts': 1585860032214,
+        #   'unsigned': {'age': 6264213},
+        #   'event_id': '$HtYxWl4cRDsIjplcYCkckzCQdQ-ohQPGCX42eSjTjro',
+        #   'user_id': '@kuechel:example.com',
+        #   'age': 6264213
+        # }
+
+        ## Bot ändert seinen Displayname auf den, von der Person er eingeladen wurde
+        ## nach der Einladung setzt er ihn wieder auf "enrol-bot" zurück
+        await workclient.set_displayname(str(await workclient.get_displayname(invitee)).split(": ")[1])
+
+        #await send_message(f"{bot_displayname} sagt: Habe folgendes gefunden: {invited}", roomid)
+
+        ## Jedes Mitglied, dass eine Gruppe ist, wird aufgelöst
+        found_somebody_to_love=False
+        for invitee in to_be_invited:
+            name=str(invitee).split("@")[1].split(":")[0]
+            (happy, newmembers) = await get_lmn_classmembers(name,roomid)
+            if happy:
+                if newmembers:
+                    found_somebody_to_love=True
+                    await send_work_message(f"{work_displayname} sagt: alle Mitglieder der Klasse/des Projekts {invitee} werden eingeladen!", roomid)
+                    for newmember in newmembers:
+                        ## alle User, die schon im Raum sind, werden gar nicht erst eingeladen
+                        if "@"+newmember+":"+id_domain in already_in_room:
+                            print(f"{newmember} ist schon drin")
+                            continue
+
+                        response = (await workclient.room_invite(roomid, "@"+newmember+":"+id_domain))
                         try:
-                            asdf = response.status_code
+                            asdf = response.transport_response
+                            adsf = response.transport_response.status
                         except AttributeError:
-                            print("Problem: Es gibt keinen status_code in der Antwort")
+                            print("Problem: Es gibt keinen Status für diese Antwort")
                             print(response)
                             return
-                        
-                        ## M_FORBIDDEN gibt es auch, wenn der User schon im Raum ist, aber das wird oben abgefangen
-                        if response.status_code == "M_FORBIDDEN":
-                            await send_message(f"{bot_displayname} sagt: Ich darf {newmember} nicht in diesen Raum einladen. Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen. Der Server sagte außerdem: {response.message}", roomid)
 
-    if not found_somebody_to_love:
-        await send_message(f"{bot_displayname} sagt: Ich habe keine Gruppe gefunden, deren Mitglieder ich einladen könnte. Lade zuerst eine Gruppe ein!", roomid)
+                        if response.transport_response.status != 200:
+                            try:
+                                asdf = response.status_code
+                            except AttributeError:
+                                print("Problem: Es gibt keinen status_code in der Antwort")
+                                print(response)
+                                return
 
-    await client.set_displayname(bot_displayname)
-    await send_message(f"{bot_displayname} sagt: Ich hoffe, ich habe gut gedient! Ich verlasse den Raum. Tschüss.", roomid)
-    await client.room_leave(roomid)
+                            ## M_FORBIDDEN gibt es auch, wenn der User schon im Raum ist, aber das wird oben abgefangen
+                            if response.status_code == "M_FORBIDDEN":
+                                await send_work_message(f"{work_displayname} sagt: Ich darf {newmember} nicht in diesen Raum einladen. Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen. Der Server sagte außerdem: {response.message}", roomid)
+
+        if not found_somebody_to_love:
+            await send_work_message(f"{work_displayname} sagt: Ich habe keine Gruppe gefunden, deren Mitglieder ich einladen könnte. Lade zuerst eine Gruppe ein!", roomid)
+
+        await workclient.set_displayname(work_displayname)
+        await send_work_message(f"{work_displayname} sagt: Ich hoffe, ich habe gut gedient! Ich verlasse den Raum. Tschüss.", roomid)
+        await workclient.room_leave(roomid)
+        list.pop(0)
 
     # mache dich zum Einladenden (der ist vermutlich Administrator im Raum)
     #accesstoken = await get_impersonation_token('@kuechel:example.com', homeserver, shared_secret)
@@ -282,10 +332,14 @@ async def call_on_invites(room, event):
     #print(requests.get(homeserver + thisapi.whoami(accesstoken)[1]).json())
     #response = requests.get(homeserver+ thisapi.room_get_state(accesstoken,roomid)[1]).json()
     #print(json.dumps(response,sort_keys=True, indent=2))
-    
+
+
+
+
 async def login():
     #einloggen
     await client.login(bot_passwd)
+    await workclient.login(work_passwd)
 
 async def main():
     #auf das Event "Invite" warten
@@ -295,6 +349,7 @@ async def main():
 
 async def logout():
     await client.close()
+    await workclient.close()
 
 
 loop = asyncio.get_event_loop()
