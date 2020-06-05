@@ -223,7 +223,6 @@ async def call_on_invites(room, event):
         await start_worker()
     await send_message(f"{bot_displayname} sagt: Ich habe meinem Arbeiter Bescheid gegeben, er kommt bald vorbei. Position in der Warteschlange: {len(list)-1}", roomid)
     await client.room_leave(roomid)
-    await start_worker()
 
     #print(response.__dict__)
     #print(response.__attrs_attrs__)
