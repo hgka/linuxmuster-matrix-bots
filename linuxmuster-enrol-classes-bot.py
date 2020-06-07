@@ -214,9 +214,16 @@ async def call_on_invites(room, event):
     except AttributeError:
         await send_message(f"{bot_displayname} sagt: In diesem Raum finde ich gar keine Events!", roomid)
 
+    ##Enrol-Bot füttert Objekt mit Daten und gibt den Auftrag an den Work-Bot weiter
+
     obj = object(invitee, roomid, event, events)
     list.append(obj)
-    await client.room_invite(roomid, work_id)
+    response = (await client.room_invite(roomid, work_id))
+    if response.status_code == "M_FORBIDDEN":
+        await send_message(f"{work_displayname} sagt: Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen und lade mich dann erneut ein. Der Server sagte außerdem: {response.message}", roomid)
+        await client.room_leave(roomid)
+        print("Bot canceled, no permission to invite")
+        return
     if(len(list) == 1):
         await send_message(f"{bot_displayname} sagt: Ich verabschiede mich und schicke einen Arbeiter zum Einladen", roomid)
         await client.room_leave(roomid)
@@ -229,7 +236,8 @@ async def call_on_invites(room, event):
     #print(response.transport_response)
     #print(response.message)
 
-    
+    ##Work-Bot übernimmt die Arbeit vom Enrol-Bot und holt die Daten aus dem ersten Objekt der Liste
+    ##er läuft so lange, bis die Liste abgearbeitet ist
 
 async def start_worker():
     while(not len(list) == 0):
