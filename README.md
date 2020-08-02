@@ -23,14 +23,16 @@ variable to match the one in your system.
 
 - Create a bot user on the matrix-synapse server like this:
 ```
-matrix-synapse-register-user enrol-bot geheim 0
+matrix-synapse-register-user enrol-bot Geheim 0
+matrix-synapse-register-user kick-bot Geheim 0
 ```
 then your config.ini becomes
 ```
 [bot]
 id = @enrol-bot:my-domain.org
-passwd = geheim
+passwd = Geheim
 ```
+use config.example.ini as a template
 
 ## Run manually
 
@@ -46,13 +48,13 @@ You can stop using CTRL-C.
 
 ## Run as a service
 
-Edit linuxmuster-matrix-bots.service to your needs (or leave unchanged
+Edit linuxmuster-matrix-*bot.service to your needs (or leave unchanged
 if you used the described folder location above) then copy to systemd
 and enable and start it:
 
 ```
-cp linuxmuster-matrix-bots.service /etc/systemd/system/
-systemctl enable linuxmuster-matrix-bots
-systemctl start linuxmuster-matrix-bots
-
+cp linuxmuster-matrix-enrol-bot.service /etc/systemd/system/
+systemctl enable linuxmuster-matrix-enrol-bot
+systemctl start linuxmuster-matrix-enrol-bot
+...
 ```

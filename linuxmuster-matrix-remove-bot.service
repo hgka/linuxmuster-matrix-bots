@@ -1,0 +1,13 @@
+[Unit]
+Description=linuxmuster-matrix-remove-bot.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/linuxmuster-matrix-bots/
+ExecStart=/opt/linuxmuster-matrix-bots/matrix-nio-env/bin/python3 /opt/linuxmuster-matrix-bots/linuxmuster-remove-users-bot.py
+Restart=on-abort
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
