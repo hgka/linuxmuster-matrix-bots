@@ -233,14 +233,15 @@ async def call_on_invites(room, event):
             await client.room_leave(roomid)
             print("Bot canceled, no permission to invite")
             return
-        
+       
+       # Starte Worker wenn er nicht läuft, ansonsten nur neue Parameter eintragen
     if(len(list) == 1):
         await send_message(f"{bot_displayname} sagt: Ich verabschiede mich und schicke einen Arbeiter zum Einladen", roomid)
         await client.room_leave(roomid)
         await start_worker()
-
-    await send_message(f"{bot_displayname} sagt: Ich habe meinem Arbeiter Bescheid gegeben, er kommt bald vorbei. Position in der Warteschlange: {len(list)-1}", roomid)
-    await client.room_leave(roomid)
+    else:
+        await send_message(f"{bot_displayname} sagt: Ich habe meinem Arbeiter Bescheid gegeben, er kommt bald vorbei. Position in der Warteschlange: {len(list)-1}", roomid)
+        await client.room_leave(roomid)
 
     #print(response.__dict__)
     #print(response.__attrs_attrs__)
