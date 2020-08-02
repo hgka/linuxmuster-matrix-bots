@@ -239,7 +239,6 @@ async def checkrooms(response):
 async def check_functionality():
     return
 
-
 async def login():
     await client.login(bot_passwd)
     await client.set_displayname(bot_displayname)
