@@ -236,6 +236,8 @@ async def checkrooms(response):
     return
 
 
+async def check_functionality():
+    return
 
 
 async def login():
@@ -254,6 +256,8 @@ async def main():
     await client.sync_forever(30000)
 
 loop = asyncio.get_event_loop()
+check_response = loop.run_until_complete(check_functionality())
+
 while True:
     print("Starte neue Schleife..")
 
