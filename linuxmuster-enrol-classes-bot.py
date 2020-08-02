@@ -187,17 +187,16 @@ async def call_on_invites(room, event):
         print("Hab ein Problem: ", response, e)
         return
 
-    
     try:
-        print(response.transport_response)
-        print(response.transport_response.status)
+        print(f"Transport Response: {response.transport_response}")
+        print(f"Transport Response status: {response.transport_response.status}")
     except AttributeError:
         print("Problem: Es gibt keinen Status für diese Antwort")
         return
 
     if response.transport_response.status != 200:
         try:
-            print(response.status_code)
+            print(f"Response status_code: {response.status_code}")
         except AttributeError:
             print("Problem: Es gibt keinen status_code in der Antwort")
             return
@@ -208,7 +207,6 @@ async def call_on_invites(room, event):
             return
 
     current_room = response
-
     try:
         events = current_room.events
     except AttributeError:
@@ -218,16 +216,29 @@ async def call_on_invites(room, event):
 
     obj = workdata(invitee, roomid, event, events)
     list.append(obj)
-    response = (await client.room_invite(roomid, work_id))
-    if response.status_code == "M_FORBIDDEN":
-        await send_message(f"{work_displayname} sagt: Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen und lade mich dann erneut ein. Der Server sagte außerdem: {response.message}", roomid)
-        await client.room_leave(roomid)
-        print("Bot canceled, no permission to invite")
+    try:
+        response = (await client.room_invite(roomid, work_id))
+    except:
         return
+
+    if response.transport_response.status != 200:
+        try:
+            print(f"Response status_code: {response.status_code}")
+        except AttributeError:
+            print("Problem: Es gibt keinen status_code in der Antwort")
+            return
+        
+        if response.status_code == "M_FORBIDDEN":
+            await send_message(f"{work_displayname} sagt: Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen und lade mich dann erneut ein. Der Server sagte außerdem: {response.message}", roomid)
+            await client.room_leave(roomid)
+            print("Bot canceled, no permission to invite")
+            return
+        
     if(len(list) == 1):
         await send_message(f"{bot_displayname} sagt: Ich verabschiede mich und schicke einen Arbeiter zum Einladen", roomid)
         await client.room_leave(roomid)
         await start_worker()
+
     await send_message(f"{bot_displayname} sagt: Ich habe meinem Arbeiter Bescheid gegeben, er kommt bald vorbei. Position in der Warteschlange: {len(list)-1}", roomid)
     await client.room_leave(roomid)
 
