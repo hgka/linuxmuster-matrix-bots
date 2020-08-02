@@ -20,12 +20,12 @@ from nio import * # see https://matrix-nio.readthedocs.io/en/latest/index.html
 
 
 config = configparser.ConfigParser()
-config.read('config.example.ini')
+config.read('config.ini')
 
 ##Enrol-Bot
-bot_id = config['bot']['id']
-bot_passwd = config['bot']['passwd']
-bot_displayname = config['bot']['displayname']
+bot_id = config['enrolbot']['id']
+bot_passwd = config['enrolbot']['passwd']
+bot_displayname = config['enrolbot']['displayname']
 ##Work-Bot
 work_id = config['workbot']['id']
 work_passwd = config['workbot']['passwd']
