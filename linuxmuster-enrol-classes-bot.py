@@ -37,7 +37,7 @@ client = AsyncClient(homeserver, bot_id)
 workclient = AsyncClient(homeserver, work_id)
 
 ##Für Datenweitergabe an Workbot
-class object:
+class workdata:
     def __init__(self, invitee, roomid, event, events):
         self.invitee = invitee
         self.roomid = roomid
@@ -216,7 +216,7 @@ async def call_on_invites(room, event):
 
     ##Enrol-Bot füttert Objekt mit Daten und gibt den Auftrag an den Work-Bot weiter
 
-    obj = object(invitee, roomid, event, events)
+    obj = workdata(invitee, roomid, event, events)
     list.append(obj)
     response = (await client.room_invite(roomid, work_id))
     if response.status_code == "M_FORBIDDEN":
@@ -341,23 +341,25 @@ async def start_worker():
     #print(json.dumps(response,sort_keys=True, indent=2))
 
 
-
-
 async def login():
-    #einloggen
     await client.login(bot_passwd)
+    await client.set_displayname(bot_displayname)
+    print(f"Logge ein als {bot_displayname}.")
     await workclient.login(work_passwd)
+    await workclient.set_displayname(work_displayname)
+    print(f"Logge ein als {work_displayname}.")
+
+async def logout():
+    print(f"Logge aus als {bot_displayname}.")
+    await client.close()
+    print(f"Logge aus als {work_displayname}.")
+    await workclient.close()
 
 async def main():
     #auf das Event "Invite" warten
     client.add_event_callback(call_on_invites, InviteEvent)
     await client.sync_forever(30000)
     #await client.sync(15000)
-
-async def logout():
-    await client.close()
-    await workclient.close()
-
 
 loop = asyncio.get_event_loop()
 check_response = loop.run_until_complete(check_functionality())
