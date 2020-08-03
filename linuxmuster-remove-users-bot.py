@@ -69,7 +69,7 @@ async def getPowerLevelName(powerlevel):
         return "Moderator"
     if powerlevel >= 100:
         return "Administrator"
-    return "Benutzerdefiniertes Level: "+int(powerlevel)
+    return "Benutzerdefiniertes Level: "+str(powerlevel)
 
 async def test(source, powerlevels):
     print(f"Source: {source}")
