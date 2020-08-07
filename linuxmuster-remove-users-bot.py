@@ -28,15 +28,30 @@ bot_passwd = config['kickbot']['passwd']
 
 client = nio.AsyncClient(homeserver, bot_id)
 
-async def send_message(msg, roomid):
+# Chat-Colors
+color_red = "#ff0000"
+
+async def send_colored_message(msg, roomid, color):
     ##Baue Nachricht aus bekommenen Parametern und schicke sie
     await client.room_send(
         room_id = roomid,
         message_type = "m.room.message",
         content={
             "msgtype": "m.text",
-            "body": msg
+            "body": "<" + color + ">(" + msg + ")",
+            "formatted_body": "<p><span data-mx-color=" + color + ">" + msg + "</span></p>",
+            "format": "org.matrix.custom.html"
         }
+    )
+
+async def send_message(msg, roomid):
+    await client.room_send(
+        room_id = roomid,
+        message_type = "m.room.message",
+        content={
+            "msgtype": "m.text",
+            "body": msg
+         }
     )
 
 async def call_on_invites(room, event):
@@ -117,7 +132,7 @@ async def kick_all_users(roomid):
                                     #await send_message(f"{bot_displayname} sagt: Jetzt hätte ich versucht, {to_kick} mit Powerlevel {mypowerlevel} zu kicken/auszuladen", roomid)
                                     await client.room_kick(roomid, to_kick)
                                 else:
-                                    await send_message(f"{bot_displayname} sagt: {to_kick} kann ich nicht ausladen/kicken, habe nicht genügend Rechte ({powerlevel_to_kick} >= {mypowerlevel})", roomid)
+                                    await send_colored_message(f"{bot_displayname} sagt: {to_kick} kann ich nicht ausladen/kicken, habe nicht genügend Rechte ({powerlevel_to_kick} >= {mypowerlevel})", roomid, color_red)
 
     await send_message(f"{bot_displayname} sagt: Ich habe alle Benutzer aus dem Raum entfernt, so weit ich konnte. Ich hoffe ich habe gut gedient :) Ich verabschiede mich.", roomid)
     #print(f"Verlasse den Raum {roomid}")
@@ -128,14 +143,14 @@ async def waitForRights(roomid):
     ## Überprüfung alle 10 Sekunden
     timeleft = 60
     while(timeleft > 0):
-        await send_message(f"{bot_displayname} sagt: Ich darf in diesem Raum nichts tun. Mache mich bitte zum Moderator in diesem Raum (warte noch {timeleft} Sekunden).", roomid)
+        await send_colored_message(f"{bot_displayname} sagt: Ich darf in diesem Raum nichts tun. Mache mich bitte zum Moderator in diesem Raum (warte noch {timeleft} Sekunden).", roomid, color_red)
         time.sleep(10)
         timeleft=timeleft - 10
         powerlevel = await getMyPowerLevel(roomid)
         if powerlevel >= 50:
             return True
 
-    await send_message(f"{bot_displayname} sagt: Mir wurden keine Rechte gegeben. Bitte lade mich erneut ein und mache mich zum Moderator", roomid)
+    await send_colored_message(f"{bot_displayname} sagt: Mir wurden keine Rechte gegeben. Bitte lade mich erneut ein und mache mich zum Moderator", roomid, color_red)
     await client.room_leave(roomid)
     return False
 
