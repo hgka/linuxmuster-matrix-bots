@@ -15,6 +15,10 @@ import asyncio
 # Matrix-API Bibliotheken
 import nio
 
+# Python Logging api
+import logging
+import logging.handlers
+
 # Config
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -28,11 +32,40 @@ bot_passwd = config['kickbot']['passwd']
 
 client = nio.AsyncClient(homeserver, bot_id)
 
+# Logging
+do_debug = config['log']['debug']
+log_file = config['log']['logfilename']
+
+logger = logging.getLogger('Logger')
+logger.setLevel(logging.DEBUG)
+
+handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=1024*1024, backupCount=5)
+stream = logging.StreamHandler()
+formatter = logging.Formatter("%(asctime)s : %(levelname)s : %(message)s")
+stream.setFormatter(formatter)
+handler.setFormatter(formatter)
+
+logger.addHandler(handler)
+logger.addHandler(stream)
+
 # Chat-Colors
-color_red = "#ff0000"
+color_red = '#ff0000'
+color_green = '#008000'
+
+
+async def debug(msg, code = 'debug'):
+    ##Sende debug o. warnung via Konsole und schreibe in Log-Datei
+    if code == 'debug':
+        if do_debug == "True":
+            logger.debug(msg)
+    elif code == 'warning':
+        logger.warning(msg)
+    elif code == 'critical':
+        logger.critical(msg)
+    return
 
 async def send_colored_message(msg, roomid, color):
-    ##Baue Nachricht aus bekommenen Parametern und schicke sie
+    ##Baue Nachricht aus bekommenen Parametern und schicke sie (farbige Nachricht)
     await client.room_send(
         room_id = roomid,
         message_type = "m.room.message",
@@ -45,6 +78,7 @@ async def send_colored_message(msg, roomid, color):
     )
 
 async def send_message(msg, roomid):
+    ##Baue Nachricht aus bekommenen Parametern und schicke sie (weiße Nachricht)
     await client.room_send(
         room_id = roomid,
         message_type = "m.room.message",
@@ -55,6 +89,7 @@ async def send_message(msg, roomid):
     )
 
 async def call_on_invites(room, event):
+    await debug("Habe eine Einladung erhalten")
     roomid = room.room_id 
     if(not isinstance(event, nio.InviteMemberEvent)):
         return
@@ -78,6 +113,7 @@ async def call_on_invites(room, event):
     await kick_all_users(roomid)
 
 async def getPowerLevelName(powerlevel):
+    await debug("Hole mir den Namen des PowerLevels")
     if powerlevel == 0:
         return "Standard"
     if powerlevel == 50:
@@ -111,7 +147,8 @@ async def kick_all_users(roomid):
     ##    ## Möglicherweise gibt es BadEvents in den PowerLevels, dann müssen wir hier abbrechen.
     ##    await send_message(f"{bot_displayname} sagt: Irgendetwas hat nicht funktioniert. Mache mich zum Moderator, kicke mich und lade mich wieder ein.", roomid)
     ##    return
-
+    
+    await debug("Beginne die Benutzer zu kicken..")
     ## Jetzt suche nach Benutzern in diesem Raum:
     for event in events:
         if 'type' in event:
@@ -134,11 +171,13 @@ async def kick_all_users(roomid):
                                 else:
                                     await send_colored_message(f"{bot_displayname} sagt: {to_kick} kann ich nicht ausladen/kicken, habe nicht genügend Rechte ({powerlevel_to_kick} >= {mypowerlevel})", roomid, color_red)
 
-    await send_message(f"{bot_displayname} sagt: Ich habe alle Benutzer aus dem Raum entfernt, so weit ich konnte. Ich hoffe ich habe gut gedient :) Ich verabschiede mich.", roomid)
+    await send_colored_message(f"{bot_displayname} sagt: Ich habe alle Benutzer aus dem Raum entfernt, so weit ich konnte. Ich hoffe ich habe gut gedient :) Ich verabschiede mich.", roomid, color_green)
     #print(f"Verlasse den Raum {roomid}")
     await client.room_leave(roomid)
+    await debug("Arbeit erledigt und Raum verlassen")
 
 async def waitForRights(roomid):
+    await debug("Fehlende Rechte im Raum. Warte bis ich Rechte erhalte..")
     ## Warte auf das Vergeben der Rechte, danach geht's weiter
     ## Überprüfung alle 10 Sekunden
     timeleft = 60
@@ -152,6 +191,7 @@ async def waitForRights(roomid):
 
     await send_colored_message(f"{bot_displayname} sagt: Mir wurden keine Rechte gegeben. Bitte lade mich erneut ein und mache mich zum Moderator", roomid, color_red)
     await client.room_leave(roomid)
+    await debug("Rechte im Raum nicht erhalten. Gehe wieder.")
     return False
 
 ##
@@ -161,6 +201,7 @@ async def waitForRights(roomid):
 ## nicht verwenden, um herauszubekommen, ob man rausschmeißen kann oder auch zur Findung des Powerlevels...
 ##
 async def getPowerLevels(events):
+    await debug("Hole mir die PowerLevels im Raum..")
     #Suche nach PowerLevels (Objekt) in diesem Raum:
     powerlevels = None
     for event in events:
@@ -217,6 +258,7 @@ async def getMyPowerLevel(roomid):
     return powerlevel
         
 async def resetToModerator(roomid):
+    await debug("Setze mein PowerLevel von Admin auf Moderator zurück")
     try:
         ## setze den Administratorstatus zurück auf 50 (Moderator)
         content = (await client.room_get_state_event(roomid,'m.room.power_levels', '')).content
@@ -224,9 +266,10 @@ async def resetToModerator(roomid):
         response = (await client.room_put_state(roomid,'m.room.power_levels',content))
         response = (await client.room_get_state_event(roomid,'m.room.power_levels', ''))
         await send_message(f"{bot_displayname} sagt: Administrator sollte ich hier nicht sein. Habe mich zum Moderator gemacht.",roomid)
-        print(f"{bot_displayname} sagt: Administrator sollte ich hier nicht sein. Habe mich zum Moderator gemacht.")
+        #print(f"{bot_displayname} sagt: Administrator sollte ich hier nicht sein. Habe mich zum Moderator gemacht.")
     except:
         await send_message(f"{bot_displayname} sagt: Wollte mich vom Administrator degradieren. Irgendwie hat das nicht geklappt -> Sag' dem Admin Bescheid.",roomid)
+        await debug("Zurücksetzen meines Powerlevels von Admin auf Moderator fehlgeschlagen.", 'warning')
     return    
 
 async def amIadmin(roomid):
@@ -241,6 +284,7 @@ async def checkrooms(response):
         rooms = (await client.joined_rooms()).rooms
     except:
         print("Hmm.. Irgendwas hat wohl nicht funktioniert, die Räume auszulesen.")
+        await debug("Hmm.. Irgendwas hat wohl nicht funktioniert, die Räume auszulesen.", 'warning')
         print(rooms)
         return
 
@@ -255,15 +299,18 @@ async def check_functionality():
     return
 
 async def login():
+    logger.debug(f"Logge mich ein als {bot_displayname}")
     await client.login(bot_passwd)
     await client.set_displayname(bot_displayname)
-    print(f"Logge ein als {bot_displayname}.")
+    #print(f"Logge ein als {bot_displayname}.")
     
 async def logout():
-    print(f"Logge aus als {bot_displayname}.")
+    logger.debug(f"Logge mich aus als {bot_displayname}")
+    #print(f"Logge aus als {bot_displayname}.")
     await client.close()
 
 async def main():
+    logger.debug("Starte..")
     client.add_event_callback(call_on_invites, nio.InviteEvent)
     #client.add_event_callback(test, nio.RoomMessage)
     client.add_response_callback(checkrooms, nio.SyncResponse)
