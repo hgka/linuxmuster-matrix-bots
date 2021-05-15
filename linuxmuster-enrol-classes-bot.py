@@ -30,9 +30,9 @@ config.read('config.ini')
 #bot_deviceid = config['enrolbot']['device']
 #bot_token = config['enrolbot']['token']
 ##Work-Bot
-work_id = config['workbot']['id']
-work_passwd = config['workbot']['passwd']
-work_displayname = config['workbot']['displayname']
+#work_id = config['workbot']['id']
+#work_passwd = config['workbot']['passwd']
+#work_displayname = config['workbot']['displayname']
 
 homeserver = config['homeserver']['url']
 id_domain = config['homeserver']['domain']
@@ -77,7 +77,7 @@ class BotClient(AsyncClient):
         )
     
 client = BotClient('enrolbot')
-workclient = AsyncClient(homeserver, work_id)
+workclient = BotClient('workbot')
 
 ##Für Datenweitergabe an Workbot
 class workdata:
@@ -88,17 +88,6 @@ class workdata:
         self.events = events
 
 list = []
-
-async def send_work_message(msg, roomid):
-    ##Baue Nachricht aus bekommenen Parametern und schicke sie
-    await workclient.room_send(
-        room_id = roomid,
-        message_type = "m.room.message",
-        content={
-            "msgtype": "m.text",
-            "body": msg
-        }
-    )
 
 async def check_functionality():
 
@@ -250,7 +239,7 @@ async def call_on_invites(room, event):
     obj = workdata(invitee, roomid, event, events)
     list.append(obj)
     try:
-        response = (await client.room_invite(roomid, work_id))
+        response = (await client.room_invite(roomid, workclient.user_id))
     except:
         return
 
@@ -262,7 +251,7 @@ async def call_on_invites(room, event):
             return
         
         if response.status_code == "M_FORBIDDEN":
-            await client.send_message(f"{work_displayname} sagt: Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen und lade mich dann erneut ein. Der Server sagte außerdem: {response.message}", roomid)
+            await client.send_message(f"Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen und lade mich dann erneut ein. Der Server sagte außerdem: {response.message}", roomid)
             await client.room_leave(roomid)
             print("Bot canceled, no permission to invite")
             return
@@ -340,7 +329,7 @@ async def start_worker():
             if happy:
                 if newmembers:
                     found_somebody_to_love=True
-                    await send_work_message(f"{work_displayname} sagt: alle Mitglieder der Klasse/des Projekts {invitee} werden eingeladen!", roomid)
+                    await workclient.send_message(f"alle Mitglieder der Klasse/des Projekts {invitee} werden eingeladen!", roomid)
                     for newmember in newmembers:
                         ## alle User, die schon im Raum sind, werden gar nicht erst eingeladen
                         if "@"+newmember+":"+id_domain in already_in_room:
@@ -366,13 +355,13 @@ async def start_worker():
 
                             ## M_FORBIDDEN gibt es auch, wenn der User schon im Raum ist, aber das wird oben abgefangen
                             if response.status_code == "M_FORBIDDEN":
-                                await send_work_message(f"{work_displayname} sagt: Ich darf {newmember} nicht in diesen Raum einladen. Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen. Der Server sagte außerdem: {response.message}", roomid)
+                                await workclient.send_message(f"Ich darf {newmember} nicht in diesen Raum einladen. Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen. Der Server sagte außerdem: {response.message}", roomid)
 
         if not found_somebody_to_love:
-            await send_work_message(f"{work_displayname} sagt: Ich habe keine Gruppe gefunden, deren Mitglieder ich einladen könnte. Lade zuerst eine Gruppe ein!", roomid)
+            await workclient.send_message(f"Ich habe keine Gruppe gefunden, deren Mitglieder ich einladen könnte. Lade zuerst eine Gruppe ein!", roomid)
 
-        await workclient.set_displayname(work_displayname)
-        await send_work_message(f"{work_displayname} sagt: Ich hoffe, ich habe gut gedient! Ich verlasse den Raum. Tschüss.", roomid)
+        await workclient.set_displayname(workclient.displayname)
+        await workclient.send_message(f"Ich hoffe, ich habe gut gedient! Ich verlasse den Raum. Tschüss.", roomid)
         await workclient.room_leave(roomid)
         list.pop(0)
 
@@ -388,13 +377,11 @@ async def start_worker():
 
 async def login():
     await client.login()
-    await workclient.login(work_passwd)
-    await workclient.set_displayname(work_displayname)
-    print(f"Logge ein als {work_displayname}.")
+    await workclient.login()
 
 async def logout():
     await client.close()
-    print(f"Logge aus als {work_displayname}.")
+    #print(f"Logge aus als {work_displayname}.")
     await workclient.close()
 
 async def main():
