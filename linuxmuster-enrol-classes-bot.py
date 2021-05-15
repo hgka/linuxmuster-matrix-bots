@@ -17,23 +17,66 @@ import configparser # see https://docs.python.org/3.6/library/configparser.html
 import asyncio
 # Matrix-API Bibliothek
 from nio import * # see https://matrix-nio.readthedocs.io/en/latest/index.html
+import getpass
 
 
 config = configparser.ConfigParser()
 config.read('config.ini')
 
 ##Enrol-Bot
-bot_id = config['enrolbot']['id']
-bot_passwd = config['enrolbot']['passwd']
-bot_displayname = config['enrolbot']['displayname']
+#bot_id = config['enrolbot']['id']
+#bot_passwd = config['enrolbot']['passwd']
+#bot_displayname = config['enrolbot']['displayname']
+#bot_deviceid = config['enrolbot']['device']
+#bot_token = config['enrolbot']['token']
 ##Work-Bot
 work_id = config['workbot']['id']
 work_passwd = config['workbot']['passwd']
 work_displayname = config['workbot']['displayname']
+
 homeserver = config['homeserver']['url']
-id_domain = bot_id.split(":")[1]
+id_domain = config['homeserver']['domain']
+
 shared_secret = str.encode(config['impersonation']['secret'])  ## needs to be byte-data
-client = AsyncClient(homeserver, bot_id)
+
+class BotClient(AsyncClient):
+    def __init__(self, type):
+        self.userid = config[type]['id']
+        self.passwd = config[type]['passwd']
+        self.displayname = config[type]['displayname']
+        super().__init__(homeserver, self.userid)
+
+        #self.device_id = config[type].get('deviceid', None)
+        #self.devicename = "lml-enrol-bot"
+        #self.access_token = config[type].get('token', None)
+        #if not self.device_id or not self.access_token:
+
+    async def login(self):
+        print(f"Logge ein als %s." % self.userid)
+        ret = await AsyncClient.login(self, password=self.passwd)
+        await self.myname()
+        return(ret)
+    
+    async def myname(self):
+        print(f"Setze Displaynamen auf {self.displayname}.")
+        return(await self.set_displayname(self.displayname))
+
+    async def close(self):
+        print(f"Logge aus als {self.displayname}.")
+        return(await AsyncClient.close(self))
+
+    async def send_message(self, msg, roomid):
+        ##Baue Nachricht aus bekommenen Parametern und schicke sie
+        await self.room_send(
+            room_id = roomid,
+            message_type = "m.room.message",
+            content={
+                "msgtype": "m.text",
+                "body": f"{self.displayname} sagt: {msg}"
+            }
+        )
+    
+client = BotClient('enrolbot')
 workclient = AsyncClient(homeserver, work_id)
 
 ##Für Datenweitergabe an Workbot
@@ -46,16 +89,6 @@ class workdata:
 
 list = []
 
-async def send_message(msg, roomid):
-    ##Baue Nachricht aus bekommenen Parametern und schicke sie
-    await client.room_send(
-        room_id = roomid,
-        message_type = "m.room.message",
-        content={
-            "msgtype": "m.text",
-            "body": msg
-        }
-    )
 async def send_work_message(msg, roomid):
     ##Baue Nachricht aus bekommenen Parametern und schicke sie
     await workclient.room_send(
@@ -145,7 +178,7 @@ async def get_lmn_classmembers(possibleclass,roomid):
             if 'member' in jsondata['GROUPS'][group]:
                 nomembersfound=False
                 print(f"Anzahl der Mitglieder der Gruppe {possibleclass}: {len(jsondata['GROUPS'][group]['member'])}")
-                await send_message(f"{bot_displayname} sagt: Habe {len(jsondata['GROUPS'][group]['member'])} Mitglieder in Gruppe {possibleclass} gefunden.", roomid)
+                await client.send_message(f"Habe {len(jsondata['GROUPS'][group]['member'])} Mitglieder in Gruppe {possibleclass} gefunden.", roomid)
                 for cn in jsondata['GROUPS'][group]['member']:
                     print(cn[3:cn[0:].find(",OU")])
                     members.append(cn[3:cn[0:].find(",OU")])
@@ -156,7 +189,7 @@ async def get_lmn_classmembers(possibleclass,roomid):
     if not nomembersfound:
         return(True, members)
 
-    await send_message(f"{bot_displayname} sagt: Hm, habe keine Mitglieder in Gruppe {possibleclass} gefunden.", roomid)
+    await client.send_message(f"Hm, habe keine Mitglieder in Gruppe {possibleclass} gefunden.", roomid)
     return(False,None)
 
 async def call_on_invites(room, event):
@@ -178,7 +211,7 @@ async def call_on_invites(room, event):
     await client.join(roomid)
 
     # send a message about having joined
-    await send_message(f"{bot_displayname} sagt: zu Diensten!", roomid)
+    await client.send_message(f"zu Diensten!", roomid)
 
     # examine the room
     try:
@@ -202,7 +235,7 @@ async def call_on_invites(room, event):
             return
 
         if response.status_code == "M_FORBIDDEN":
-            await send_message(f"{bot_displayname} sagt: Ich darf in dem Raum gar nichts tun, tut mir leid! Erlaube mir, den Raum anzuschauen und lade mich erneut ein. Ich ziehe meine Einladung zurück.", roomid)
+            await client.send_message(f"Ich darf in dem Raum gar nichts tun, tut mir leid! Erlaube mir, den Raum anzuschauen und lade mich erneut ein. Ich ziehe meine Einladung zurück.", roomid)
             await client.room_leave(roomid)
             return
 
@@ -210,7 +243,7 @@ async def call_on_invites(room, event):
     try:
         events = current_room.events
     except AttributeError:
-        await send_message(f"{bot_displayname} sagt: In diesem Raum finde ich gar keine Events!", roomid)
+        await client.send_message(f"In diesem Raum finde ich gar keine Events!", roomid)
 
     ##Enrol-Bot füttert Objekt mit Daten und gibt den Auftrag an den Work-Bot weiter
 
@@ -229,18 +262,18 @@ async def call_on_invites(room, event):
             return
         
         if response.status_code == "M_FORBIDDEN":
-            await send_message(f"{work_displayname} sagt: Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen und lade mich dann erneut ein. Der Server sagte außerdem: {response.message}", roomid)
+            await client.send_message(f"{work_displayname} sagt: Bitte erlaube mir in den Einstellungen, das 'Standard'-Rollen Benutzer einladen dürfen und lade mich dann erneut ein. Der Server sagte außerdem: {response.message}", roomid)
             await client.room_leave(roomid)
             print("Bot canceled, no permission to invite")
             return
        
        # Starte Worker wenn er nicht läuft, ansonsten nur neue Parameter eintragen
     if(len(list) == 1):
-        await send_message(f"{bot_displayname} sagt: Ich verabschiede mich und schicke einen Arbeiter zum Einladen", roomid)
+        await client.send_message(f"Ich verabschiede mich und schicke einen Arbeiter zum Einladen", roomid)
         await client.room_leave(roomid)
         await start_worker()
     else:
-        await send_message(f"{bot_displayname} sagt: Ich habe meinem Arbeiter Bescheid gegeben, er kommt bald vorbei. Position in der Warteschlange: {len(list)-1}", roomid)
+        await client.send_message(f"Ich habe meinem Arbeiter Bescheid gegeben, er kommt bald vorbei. Position in der Warteschlange: {len(list)-1}", roomid)
         await client.room_leave(roomid)
 
     #print(response.__dict__)
@@ -267,12 +300,12 @@ async def start_worker():
         already_in_room = []
         for event in events:
             if 'type' in event:
-                #await send_message(f"{bot_displayname} sagt: {event['type']}", roomid)
+                #await send_message(f"{event['type']}", roomid)
                 if (event['type'] == 'm.room.member'):
                     if 'content' in event:
-                        #await send_message(f"{bot_displayname} sagt: {event['content']}", roomid)
+                        #await send_message(f"{event['content']}", roomid)
                         if 'membership' in event['content']:
-                            #await send_message(f"{bot_displayname} sagt: {event['content']['membership']}", roomid)
+                            #await send_message(f"{event['content']['membership']}", roomid)
                             if (event['content']['membership'] == 'invite'):
                                 if 'state_key' in event:
                                     to_be_invited.append(event['state_key'])
@@ -297,7 +330,7 @@ async def start_worker():
         ## nach der Einladung setzt er ihn wieder auf "enrol-bot" zurück
         await workclient.set_displayname(str(await workclient.get_displayname(invitee)).split(": ")[1])
 
-        #await send_message(f"{bot_displayname} sagt: Habe folgendes gefunden: {invited}", roomid)
+        #await send_message(f"Habe folgendes gefunden: {invited}", roomid)
 
         ## Jedes Mitglied, dass eine Gruppe ist, wird aufgelöst
         found_somebody_to_love=False
@@ -354,15 +387,12 @@ async def start_worker():
 
 
 async def login():
-    await client.login(bot_passwd)
-    await client.set_displayname(bot_displayname)
-    print(f"Logge ein als {bot_displayname}.")
+    await client.login()
     await workclient.login(work_passwd)
     await workclient.set_displayname(work_displayname)
     print(f"Logge ein als {work_displayname}.")
 
 async def logout():
-    print(f"Logge aus als {bot_displayname}.")
     await client.close()
     print(f"Logge aus als {work_displayname}.")
     await workclient.close()
