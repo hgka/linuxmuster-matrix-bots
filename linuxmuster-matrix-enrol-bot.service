@@ -1,5 +1,5 @@
 [Unit]
-Description=linuxmuster-matrix-bots.service
+Description=linuxmuster-matrix-enrol-bot.service
 
 [Service]
 Type=simple
