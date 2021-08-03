@@ -89,16 +89,27 @@ async def send_message(msg, roomid):
     )
 
 async def call_on_invites(room, event):
-    await debug("Habe eine Einladung erhalten")
-    roomid = room.room_id 
+    roomid = room.room_id
+
+    ## Einladung ist kein InviteMemberEvent
     if(not isinstance(event, nio.InviteMemberEvent)):
-        return
-    if(event.membership != "invite"):
+        await debug(f"Einladung in Raum {roomid} ist kein InviteMemberEvent.")
         return
 
-    # Trete dem Raum bei
-    #print('Trete Raum bei')
-    await client.join(roomid)
+    ## Einladung: Membership steht nicht auf "invite"
+    if(event.membership != "invite"):
+        await debug(f"Einladung in Raum {roomid}: Einladungsmitgliedschaft steht auf: {event.membership} (nicht \"invite\")")
+        return
+
+    response = await client.join(roomid)
+    if isinstance(response, nio.responses.JoinError):
+        try:
+            await debug(f"Raumbeitritt nach Einladung in Raum {roomid} schlug fehl: {response.message} ({response.status_code})")
+        except AttributeError:
+            await debug(f"Problem: Es gibt keinen status_code in der Antwort {response}.")
+        return
+
+    await debug(f"Beitritt {roomid} erfolgreich")
 
     # Checke und resette Administratorstatus zu Moderatorstatus
     if (await amIadmin(roomid)):
@@ -107,7 +118,7 @@ async def call_on_invites(room, event):
     # Checke mein Powerlevel
     powerlevel = await getMyPowerLevel(roomid)
     levelname = await getPowerLevelName(powerlevel)
-    await send_message(f"{bot_displayname} sagt: Hallo! Bin mit Status '{levelname}' in diesem Raum zu Diensten. Aufgabe: alle ausladen!", roomid)
+    await send_message(f"{bot_displayname} sagt: Hallo! Bin mit Status '{levelname}' in diesem Raum zu Diensten. Meine Aufgabe: alle ausladen!", roomid)
 
     # Kicke alle User
     await kick_all_users(roomid)
@@ -139,6 +150,7 @@ async def kick_all_users(roomid):
 
     ## Hole den Raumstatus
     response = (await client.room_get_state(roomid))
+    #print(response)
     events = response.events
 
     ## Suche nach den PowerLevels (Objekt) in diesem Raum:
@@ -148,30 +160,43 @@ async def kick_all_users(roomid):
     ##    await send_message(f"{bot_displayname} sagt: Irgendetwas hat nicht funktioniert. Mache mich zum Moderator, kicke mich und lade mich wieder ein.", roomid)
     ##    return
     
-    await debug("Beginne die Benutzer zu kicken..")
+    await debug(f"Beginne die Benutzer aus {roomid} zu kicken..")
     ## Jetzt suche nach Benutzern in diesem Raum:
     for event in events:
         if 'type' in event:
             # await send_message(f"{bot_displayname} sagt: {event['type']}", roomid)
+            #await debug(f"{event['type']}")
             if (event['type'] == 'm.room.member'):
                 if 'content' in event:
-                    #await send_message(f"{bot_displayname} sagt: {event['content']}", roomid)
+                    #await debug(f"{event['content']}")
+                   #await send_message(f"{bot_displayname} sagt: {event['content']}", roomid)
                     if 'membership' in event['content']:
+                        #await debug(f"{event['content']['membership']}")
                         #await send_message(f"{bot_displayname} sagt: {event['content']['membership']}", roomid)
                         if 'state_key' in event:
                             to_kick = event['state_key']
+                            await debug(f"Es soll: {to_kick} rausgeschmissen werden.")
                             if to_kick == bot_id:
                                 ## kicke mich nicht selbst
+                                await debug(f"Hier nicht: Kicke mich nicht selbst")
                                 continue
-                            if (event['content']['membership'] == 'invite' or event['content']['membership'] == 'join'):
-                                powerlevel_to_kick = await getPowerLevel(roomid,to_kick)
-                                if mypowerlevel > powerlevel_to_kick:
-                                    #await send_message(f"{bot_displayname} sagt: Jetzt hätte ich versucht, {to_kick} mit Powerlevel {mypowerlevel} zu kicken/auszuladen", roomid)
-                                    await client.room_kick(roomid, to_kick)
-                                else:
-                                    await send_colored_message(f"{bot_displayname} sagt: {to_kick} kann ich nicht ausladen/kicken, habe nicht genügend Rechte ({powerlevel_to_kick} >= {mypowerlevel})", roomid, color_red)
+                            if (not (event['content']['membership'] == 'invite' or event['content']['membership'] == 'join')):
+                                await debug(f"Hier nicht: Kicke {to_kick} nicht, denn er ist hier nicht drin")
+                                continue
 
-    await send_colored_message(f"{bot_displayname} sagt: Ich habe alle Benutzer aus dem Raum entfernt, so weit ich konnte. Ich hoffe ich habe gut gedient :) Ich verabschiede mich.", roomid, color_green)
+                            powerlevel_to_kick = await getPowerLevel(roomid,to_kick)
+                                
+                            if mypowerlevel > powerlevel_to_kick:
+                                #await send_message(f"{bot_displayname} sagt: Jetzt hätte ich versucht, {to_kick} mit Powerlevel {mypowerlevel} zu kicken/auszuladen", roomid)
+                                await client.room_kick(roomid, to_kick)
+                                if isinstance(response, nio.responses.RoomKickError):
+                                    await debug("Fehler beim Rauswerfen: " + response.message)
+                                    continue
+                            else:
+                                await debug(f"Hier nicht: {to_kick} hat die Rechte {powerlevel_to_kick} und ich nur {mypowerlevel}.")
+                                await send_colored_message(f"{bot_displayname} sagt: {to_kick} kann ich nicht ausladen/kicken, habe nicht genügend Rechte ({powerlevel_to_kick} >= {mypowerlevel})", roomid, color_red)
+
+    await send_colored_message(f"{bot_displayname} sagt: Ich habe alle Benutzer aus dem Raum entfernt, so weit ich konnte. Alle anderen muss der Ersteller des Raumes ausladen. Falls weitere Administratoren im Raum sind, muss man diese bitten den Raum zu verlassen.", roomid, color_green)
     #print(f"Verlasse den Raum {roomid}")
     await client.room_leave(roomid)
     await debug("Arbeit erledigt und Raum verlassen")
@@ -201,7 +226,6 @@ async def waitForRights(roomid):
 ## nicht verwenden, um herauszubekommen, ob man rausschmeißen kann oder auch zur Findung des Powerlevels...
 ##
 async def getPowerLevels(events):
-    await debug("Hole mir die PowerLevels im Raum..")
     #Suche nach PowerLevels (Objekt) in diesem Raum:
     powerlevels = None
     for event in events:
@@ -221,6 +245,7 @@ async def getPowerLevel(roomid, id_to_find):
     ## hole die Powerlevels aus dem Raum
     response = await client.room_get_state(roomid)
     events = response.events
+    await debug(f"Hole mir die PowerLevels von {id_to_find} im Raum {roomid}...")
     powerlevels = await getPowerLevels(events)
     powerlevel = 0
     ## hole PowerLevel des Bots in dem Raum
@@ -241,6 +266,7 @@ async def getMyPowerLevel(roomid):
     ## hole die Powerlevels aus dem Raum
     response = await client.room_get_state(roomid)
     events = response.events
+    await debug(f"Hole mir die PowerLevels von mir im Raum {roomid}...")
     powerlevels = await getPowerLevels(events)
     powerlevel = 0
     ## hole PowerLevel des Bots in dem Raum
@@ -281,59 +307,73 @@ async def amIadmin(roomid):
 
 async def checkrooms(response):
     try:
-        rooms = (await client.joined_rooms()).rooms
+        response = await client.joined_rooms()
     except:
-        print("Hmm.. Irgendwas hat wohl nicht funktioniert, die Räume auszulesen.")
-        await debug("Hmm.. Irgendwas hat wohl nicht funktioniert, die Räume auszulesen.", 'warning')
-        print(rooms)
-        return
+        await debug("Fehler beim Auslesen der Räume: " + str(response), 'warning')
+        return False
+
+    rooms = response.rooms
 
     for roomid in rooms:
         if (await amIadmin(roomid)):
             await resetToModerator(roomid)
             await client.room_leave(roomid)
-    return
+
+    return True
 
 
 async def check_functionality():
     return
 
 async def login():
-    logger.debug(f"Logge mich ein als {bot_displayname}")
-    await client.login(bot_passwd)
-    await client.set_displayname(bot_displayname)
-    #print(f"Logge ein als {bot_displayname}.")
+    await debug(f"Logge mich ein als {bot_displayname}")
+    response = await client.login(bot_passwd)
+    if isinstance(response, nio.responses.LoginError):
+        await debug("Fehler beim Einloggen: " + response.message)
+        return False
+    response = await client.set_displayname(bot_displayname)
+    if isinstance(response, nio.responses.ProfileSetDisplayNameError):
+        await debug("Fehler beim Setzen des Namens: " + repsonse.message)
+
+    return True
     
 async def logout():
-    logger.debug(f"Logge mich aus als {bot_displayname}")
+    await debug(f"Logge mich aus als {bot_displayname}")
     #print(f"Logge aus als {bot_displayname}.")
     await client.close()
 
 async def main():
-    logger.debug("Starte..")
+    await debug("Starte Ausladungs-Bot...")
+    ## Callback, um Einladungen zu bearbeiten
     client.add_event_callback(call_on_invites, nio.InviteEvent)
-    #client.add_event_callback(test, nio.RoomMessage)
-    client.add_response_callback(checkrooms, nio.SyncResponse)
+    ## Callback, um Raumberechtigungen zu checken
+    #client.add_response_callback(checkrooms, nio.SyncResponse)
     await client.sync_forever(30000)
+
+    #client.add_event_callback(test, nio.RoomMessage)
 
 loop = asyncio.get_event_loop()
 check_response = loop.run_until_complete(check_functionality())
 
 while True:
-    print("Starte neue Schleife..")
-
+    logger.debug("Starte neue Schleife..")
     try:
         login_response = loop.run_until_complete(login())
     except KeyboardInterrupt:
+        login_response = False
+
+    if not login_response:
         logout_response = loop.run_until_complete(logout())
         raise SystemExit
 
     try:
         main_response = loop.run_until_complete(main())
     except KeyboardInterrupt:
+        logger.debug("Keyboard Interrupt...")
+        main_response = False
+
+    if not main_response:
         logout_response = loop.run_until_complete(logout())
         raise SystemExit
-
-    logout_response = loop.run_until_complete(logout())
 
 logout_response = loop.run_until_complete(logout())
