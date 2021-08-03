@@ -347,7 +347,7 @@ async def main():
     ## Callback, um Einladungen zu bearbeiten
     client.add_event_callback(call_on_invites, nio.InviteEvent)
     ## Callback, um Raumberechtigungen zu checken
-    #client.add_response_callback(checkrooms, nio.SyncResponse)
+    client.add_response_callback(checkrooms, nio.SyncResponse)
     await client.sync_forever(30000)
 
     #client.add_event_callback(test, nio.RoomMessage)
