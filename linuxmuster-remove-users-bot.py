@@ -188,7 +188,7 @@ async def kick_all_users(roomid):
                                 
                             if mypowerlevel > powerlevel_to_kick:
                                 #await send_message(f"{bot_displayname} sagt: Jetzt hätte ich versucht, {to_kick} mit Powerlevel {mypowerlevel} zu kicken/auszuladen", roomid)
-                                await client.room_kick(roomid, to_kick)
+                                await client.room_kick(roomid, to_kick, "Der Administrator dieses Raumes hat beschlossen, den Raum zu leeren. Vielen Dank für das Verständnis.")
                                 if isinstance(response, nio.responses.RoomKickError):
                                     await debug("Fehler beim Rauswerfen: " + response.message)
                                     continue
