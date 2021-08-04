@@ -333,7 +333,7 @@ async def login():
         return False
     response = await client.set_displayname(bot_displayname)
     if isinstance(response, nio.responses.ProfileSetDisplayNameError):
-        await debug("Fehler beim Setzen des Namens: " + repsonse.message)
+        await debug("Fehler beim Setzen des Namens: " + response.message)
 
     return True
     
