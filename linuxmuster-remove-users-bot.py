@@ -147,6 +147,10 @@ async def kick_all_users(roomid):
         if not have_rights:
             return
     mypowerlevel = await getMyPowerLevel(roomid)
+   
+    #Checke Powerlevel erneut, falls Bot versehentlich zum Admin statt zum Mod ernannt wurde..
+    if (await amIadmin(roomid)):
+        await resetToModerator(roomid)
 
     ## Hole den Raumstatus
     response = (await client.room_get_state(roomid))
